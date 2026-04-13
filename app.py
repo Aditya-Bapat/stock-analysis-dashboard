@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import pandas as pd
+import plotly.subplots as sp
 
 # ===== TITLE =====
 st.title("📊 Stock Analysis Dashboard")
@@ -20,10 +20,8 @@ end_date = today
 # ===== ANALYSIS BUTTON =====
 if st.button("Analyze Stocks"):
 
-    st.subheader("📊 Individual Stock Analysis")
-
     for ticker in tickers:
-        st.markdown(f"### {ticker}")
+        st.subheader(f"📊 {ticker}")
 
         data = yf.download(f"{ticker}.NS", start=start_date, end=end_date, progress=False)
 
@@ -31,8 +29,10 @@ if st.button("Analyze Stocks"):
             st.warning(f"No data for {ticker}")
             continue
 
+        # Fix columns
         data.columns = data.columns.get_level_values(0)
 
+        # ===== BASIC METRICS =====
         start_price = data['Close'].iloc[0]
         end_price = data['Close'].iloc[-1]
 
@@ -45,9 +45,7 @@ if st.button("Analyze Stocks"):
         max_date = data['High'].idxmax()
         min_date = data['Low'].idxmin()
 
-        # ===== METRICS =====
         col1, col2, col3 = st.columns(3)
-
         col1.metric("Start Price", f"₹{start_price:.2f}")
         col2.metric("End Price", f"₹{end_price:.2f}")
         col3.metric("Return", f"{pct:.2f}%")
@@ -55,68 +53,151 @@ if st.button("Analyze Stocks"):
         st.write(f"📈 High: ₹{max_price:.2f} on {max_date.strftime('%Y-%m-%d')}")
         st.write(f"📉 Low: ₹{min_price:.2f} on {min_date.strftime('%Y-%m-%d')}")
 
-        # ===== INTERACTIVE CHART =====
-        fig = go.Figure()
+        # ===== PRICE CHART =====
+        fig_price = go.Figure()
 
-        fig.add_trace(go.Scatter(
+        fig_price.add_trace(go.Scatter(
             x=data.index,
             y=data['Close'],
             mode='lines',
             name='Close Price'
         ))
 
+        fig_price.update_layout(
+            title=f"{ticker} Price Chart",
+            hovermode="x unified"
+        )
+
+        st.plotly_chart(fig_price, use_container_width=True)
+
+        # ===== MACD CALCULATION =====
+        data['EMA_12'] = data['Close'].ewm(span=12, adjust=False).mean()
+        data['EMA_26'] = data['Close'].ewm(span=26, adjust=False).mean()
+
+        data['MACD'] = data['EMA_12'] - data['EMA_26']
+        data['Signal'] = data['MACD'].ewm(span=9, adjust=False).mean()
+        data['Histogram'] = data['MACD'] - data['Signal']
+
+        data['Buy'] = (data['MACD'] > data['Signal']) & (data['MACD'].shift(1) <= data['Signal'].shift(1))
+        data['Sell'] = (data['MACD'] < data['Signal']) & (data['MACD'].shift(1) >= data['Signal'].shift(1))
+
+        # ===== MACD CHART =====
+        fig = sp.make_subplots(rows=2, cols=1, shared_xaxes=True,
+                               row_heights=[0.6, 0.4])
+
+        # PRICE + SIGNALS
         fig.add_trace(go.Scatter(
-            x=[max_date],
-            y=[max_price],
-            mode='markers+text',
-            name='High',
-            text=[f"High ₹{max_price:.2f}"],
-            textposition="top center"
-        ))
+            x=data.index,
+            y=data['Close'],
+            mode='lines',
+            name='Close'
+        ), row=1, col=1)
 
         fig.add_trace(go.Scatter(
-            x=[min_date],
-            y=[min_price],
-            mode='markers+text',
-            name='Low',
-            text=[f"Low ₹{min_price:.2f}"],
-            textposition="bottom center"
-        ))
+            x=data[data['Buy']].index,
+            y=data[data['Buy']]['Close'],
+            mode='markers',
+            marker=dict(symbol='triangle-up', size=10),
+            name='Buy'
+        ), row=1, col=1)
+
+        fig.add_trace(go.Scatter(
+            x=data[data['Sell']].index,
+            y=data[data['Sell']]['Close'],
+            mode='markers',
+            marker=dict(symbol='triangle-down', size=10),
+            name='Sell'
+        ), row=1, col=1)
+
+        # MACD PANEL
+        fig.add_trace(go.Scatter(
+            x=data.index,
+            y=data['MACD'],
+            mode='lines',
+            name='MACD'
+        ), row=2, col=1)
+
+        fig.add_trace(go.Scatter(
+            x=data.index,
+            y=data['Signal'],
+            mode='lines',
+            name='Signal'
+        ), row=2, col=1)
+
+        fig.add_trace(go.Bar(
+            x=data.index,
+            y=data['Histogram'],
+            name='Histogram'
+        ), row=2, col=1)
 
         fig.update_layout(
-            title=f"{ticker} Price Chart",
-            xaxis_title="Date",
-            yaxis_title="Price",
+            title=f"{ticker} MACD Strategy",
             hovermode="x unified"
         )
 
         st.plotly_chart(fig, use_container_width=True)
+        # ===== FETCH INDEX DATA =====
+        # nifty50 = yf.download("^NSEI", start=start_date, end=end_date, progress=False)
+        # nifty100 = yf.download("^CNX100", start=start_date, end=end_date, progress=False)
 
-    # ===== COMPARISON =====
-    st.subheader("📊 Stock Comparison (Normalized)")
+        # if not nifty50.empty:
+        #     nifty50.columns = nifty50.columns.get_level_values(0)
 
-    fig = go.Figure()
+        # if not nifty100.empty:
+        #     nifty100.columns = nifty100.columns.get_level_values(0)
+        # ===== FETCH INDEX DATA =====
+        nifty50 = yf.download("^NSEI", start=start_date, end=end_date, progress=False)
+        nifty100 = yf.download("^CNX100", start=start_date, end=end_date, progress=False)
 
-    for ticker in tickers:
-        data = yf.download(f"{ticker}.NS", start=start_date, end=end_date, progress=False)
+        if not nifty50.empty:
+            nifty50.columns = nifty50.columns.get_level_values(0)
 
-        if data.empty:
-            continue
+        if not nifty100.empty:
+            nifty100.columns = nifty100.columns.get_level_values(0)
 
-        data.columns = data.columns.get_level_values(0)
+        # ===== COMPARISON CHART =====
+        fig_price = go.Figure()
 
-        normalized = (data['Close'] / data['Close'].iloc[0]) * 100
-
-        fig.add_trace(go.Scatter(
+        # STOCK
+        fig_price.add_trace(go.Scatter(
             x=data.index,
-            y=normalized,
+            y=data['Close'],
             mode='lines',
             name=ticker
         ))
 
-    fig.update_layout(
-        title="Stock Comparison (Base = 100)",
-        hovermode="x unified"
-    )
+        # NIFTY 50
+        if not nifty50.empty:
+            fig_price.add_trace(go.Scatter(
+                x=nifty50.index,
+                y=nifty50['Close'],
+                mode='lines',
+                name='NIFTY 50',
+                line=dict(dash='dash')
+            ))
 
-    st.plotly_chart(fig, use_container_width=True)
+        # NIFTY 100
+        if not nifty100.empty:
+            fig_price.add_trace(go.Scatter(
+                x=nifty100.index,
+                y=nifty100['Close'],
+                mode='lines',
+                name='NIFTY 100',
+                line=dict(dash='dot')
+            ))
+
+        fig_price.update_layout(
+            title=f"{ticker} vs NIFTY 50 & NIFTY 100",
+            hovermode="x unified"
+        )
+
+        st.plotly_chart(fig_price, use_container_width=True)
+        stock_return = pct
+
+        if not nifty50.empty:
+            nifty_return = ((nifty50['Close'].iloc[-1] - nifty50['Close'].iloc[0]) / nifty50['Close'].iloc[0]) * 100
+
+            if stock_return > nifty_return:
+                st.success("Outperforming NIFTY 50 ✅")
+            else:
+                st.error("Underperforming NIFTY 50 ❌")
