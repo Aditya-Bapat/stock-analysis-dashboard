@@ -1,13 +1,14 @@
+
 import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import plotly.subplots as sp
 
-# ===== TITLE =====
+
 st.title("📊 Stock Analysis Dashboard")
 
-# ===== INPUT =====
+
 tickers_input = st.text_input("Enter Tickers (comma separated)", "TCS,ICICIBANK")
 tickers = [t.strip().upper() for t in tickers_input.split(",")]
 
@@ -17,7 +18,7 @@ today = datetime.today()
 start_date = today - timedelta(days=days)
 end_date = today
 
-# ===== ANALYSIS BUTTON =====
+
 if st.button("Analyze Stocks"):
 
     for ticker in tickers:
@@ -29,10 +30,10 @@ if st.button("Analyze Stocks"):
             st.warning(f"No data for {ticker}")
             continue
 
-        # Fix columns
+
         data.columns = data.columns.get_level_values(0)
 
-        # ===== BASIC METRICS =====
+
         start_price = data['Close'].iloc[0]
         end_price = data['Close'].iloc[-1]
 
@@ -53,7 +54,7 @@ if st.button("Analyze Stocks"):
         st.write(f"📈 High: ₹{max_price:.2f} on {max_date.strftime('%Y-%m-%d')}")
         st.write(f"📉 Low: ₹{min_price:.2f} on {min_date.strftime('%Y-%m-%d')}")
 
-        # ===== PRICE CHART =====
+
         fig_price = go.Figure()
 
         fig_price.add_trace(go.Scatter(
@@ -70,7 +71,7 @@ if st.button("Analyze Stocks"):
 
         st.plotly_chart(fig_price, use_container_width=True)
 
-        # ===== MACD CALCULATION =====
+
         data['EMA_12'] = data['Close'].ewm(span=12, adjust=False).mean()
         data['EMA_26'] = data['Close'].ewm(span=26, adjust=False).mean()
 
@@ -81,11 +82,11 @@ if st.button("Analyze Stocks"):
         data['Buy'] = (data['MACD'] > data['Signal']) & (data['MACD'].shift(1) <= data['Signal'].shift(1))
         data['Sell'] = (data['MACD'] < data['Signal']) & (data['MACD'].shift(1) >= data['Signal'].shift(1))
 
-        # ===== MACD CHART =====
+
         fig = sp.make_subplots(rows=2, cols=1, shared_xaxes=True,
                                row_heights=[0.6, 0.4])
 
-        # PRICE + SIGNALS
+
         fig.add_trace(go.Scatter(
             x=data.index,
             y=data['Close'],
@@ -109,7 +110,6 @@ if st.button("Analyze Stocks"):
             name='Sell'
         ), row=1, col=1)
 
-        # MACD PANEL
         fig.add_trace(go.Scatter(
             x=data.index,
             y=data['MACD'],
@@ -136,7 +136,7 @@ if st.button("Analyze Stocks"):
         )
 
         st.plotly_chart(fig, use_container_width=True)
-        # ===== FETCH INDEX DATA =====
+
         nifty50 = yf.download("^NSEI", start=start_date, end=end_date, progress=False)
         nifty100 = yf.download("^CNX100", start=start_date, end=end_date, progress=False)
 
@@ -146,10 +146,9 @@ if st.button("Analyze Stocks"):
         if not nifty100.empty:
             nifty100.columns = nifty100.columns.get_level_values(0)
 
-        # ===== COMPARISON CHART =====
+
         fig_price = go.Figure()
 
-        # STOCK
         fig_price.add_trace(go.Scatter(
             x=data.index,
             y=data['Close'],
@@ -157,7 +156,7 @@ if st.button("Analyze Stocks"):
             name=ticker
         ))
 
-        # NIFTY 50
+
         if not nifty50.empty:
             fig_price.add_trace(go.Scatter(
                 x=nifty50.index,
@@ -167,7 +166,7 @@ if st.button("Analyze Stocks"):
                 line=dict(dash='dash')
             ))
 
-        # NIFTY 100
+
         if not nifty100.empty:
             fig_price.add_trace(go.Scatter(
                 x=nifty100.index,
@@ -192,7 +191,7 @@ if st.button("Analyze Stocks"):
                 st.success("Outperforming NIFTY 50 ✅")
             else:
                 st.error("Underperforming NIFTY 50 ❌")
-        # ===== STORE SUMMARY =====
+
         summary_data = []
         summary_data.append({
             "Ticker": ticker,
@@ -200,3 +199,4 @@ if st.button("Analyze Stocks"):
             "End Price": round(end_price, 2),
             "Return %": round(pct, 2)
         })
+
